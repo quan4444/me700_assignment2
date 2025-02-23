@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "a2"
+version = "0.0.0"
+authors = [
+  { name="Quan Nguyen", email="quan@bu.edu" },
+]
+description = "ME700 Assignment 2"
+readme = "README.md"
+license = { file="LICENSE" }
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "matplotlib>=3.9.2",
+    "numpy>=1.23.2",
+    "pytest>=7.1.2",
+    "pytest-cov>=3.0.0"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/quan4444/me700_assignment2"
+"Bug Tracker" = "https://github.com/quan4444/me700_assignment2/issues"
