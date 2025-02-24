@@ -1,40 +1,103 @@
 import numpy as np
 from a2 import math_utils as mut
-from typing import List,Dict
-
+from typing import List, Dict, Tuple
 
 class Mesh:
-    def __init__(self, nodes, elements):
+    def __init__(self, nodes: np.ndarray, elements: np.ndarray):
         """
-        nodes: NumPy array of shape (n_nodes, 3) representing node coordinates.
-        elements: NumPy array of shape (n_elements, 2) representing element connectivity.
+        Initialize the mesh with nodes and elements.
+        
+        :param nodes: NumPy array of shape (n_nodes, 3) representing node coordinates.
+        :param elements: NumPy array of shape (n_elements, 2) representing element connectivity.
         """
         self.nodes = np.array(nodes)
         self.elements = np.array(elements)
+        self._validate_inputs()
 
-        # Validate inputs
+    def _validate_inputs(self):
+        """Validate the inputs for nodes and elements."""
         if self.nodes.ndim != 2 or self.nodes.shape[1] != 3:
             raise ValueError("Nodes must be a 2D array with shape (n_nodes, 3).")
         if self.elements.ndim != 2 or self.elements.shape[1] != 2:
             raise ValueError("Elements must be a 2D array with shape (n_elements, 2).")
-
+        
+        # Validate that all node IDs in elements exist in the nodes array
+        max_node_id = len(self.nodes) - 1
+        for element in self.elements:
+            for node_id in element:
+                if node_id < 0 or node_id > max_node_id:
+                    raise ValueError(f"Node ID {node_id} in elements does not exist in the nodes array.")
+        
 
 class MaterialParams:
-    def __init__(self):
-        self.materials = {}  # Key: subdomain ID, Value: dictionary of material properties
-        self.subdomains = {}  # Key: subdomain ID, Value: list of element IDs
+    def __init__(self, subdomain_dict: Dict[int, List[float]]):
+        """
+        Initialize material properties with a dictionary of subdomains and their properties.
+        
+        :param subdomain_dict: Dictionary where keys are subdomain IDs and values are lists of material properties.
+                               Example: {1: [E, nu, A, I_z, I_y, I_p, J, local_z_axis]}
+        """
+        self.materials = {}
+        self.subdomains = {}
+        self._initialize_materials(subdomain_dict)
 
-    def add_material(self, subdomain_id, E, nu, A, I_z, I_y, I_p, J, local_z_axis):
+    def _initialize_materials(self, subdomain_dict: Dict[int, List[float]]):
+        """Add material properties for each subdomain."""
+        for subdomain_id, mat_params in subdomain_dict.items():
+            self.add_material(subdomain_id, *mat_params)
+
+    def add_material(self, subdomain_id: int, E: float, nu: float, A: float, I_z: float, I_y: float, I_p: float, J: float, local_z_axis=None):
         """
         Add material properties for a subdomain.
+        
+        :param subdomain_id: ID of the subdomain.
+        :param E: Young's modulus.
+        :param nu: Poisson's ratio.
+        :param A: Cross-sectional area.
+        :param I_z: Moment of inertia about the z-axis.
+        :param I_y: Moment of inertia about the y-axis.
+        :param I_p: Polar moment of inertia.
+        :param J: Torsional constant.
+        :param local_z_axis: Local z-axis orientation (optional).
         """
+        self._validate_material_properties(E, nu, A, I_z, I_y, I_p, J)
         self.materials[subdomain_id] = {
             'E': E, 'nu': nu, 'A': A, 'I_z': I_z, 'I_y': I_y, 'I_p': I_p, 'J': J, 'local_z_axis': local_z_axis
         }
 
-    def assign_subdomain(self, subdomain_id, element_ids):
+    def _validate_material_properties(self, E: float, nu: float, A: float, I_z: float, I_y: float, I_p: float, J: float):
+        """
+        Validate material properties.
+        
+        :param E: Young's modulus.
+        :param nu: Poisson's ratio.
+        :param A: Cross-sectional area.
+        :param I_z: Moment of inertia about the z-axis.
+        :param I_y: Moment of inertia about the y-axis.
+        :param I_p: Polar moment of inertia.
+        :param J: Torsional constant.
+        """
+        if E <= 0:
+            raise ValueError("Young's modulus (E) must be positive.")
+        if not (-1 <= nu <= 0.5):
+            raise ValueError("Poisson's ratio (nu) must be between -1 and 0.5.")
+        if A <= 0:
+            raise ValueError("Cross-sectional area (A) must be positive.")
+        if I_z <= 0:
+            raise ValueError("Moment of inertia about the z-axis (I_z) must be positive.")
+        if I_y <= 0:
+            raise ValueError("Moment of inertia about the y-axis (I_y) must be positive.")
+        if I_p <= 0:
+            raise ValueError("Polar moment of inertia (I_p) must be positive.")
+        if J <= 0:
+            raise ValueError("Torsional constant (J) must be positive.")
+
+    def assign_subdomain(self, subdomain_id: int, element_ids: List[int]):
         """
         Assign elements to a subdomain.
+        
+        :param subdomain_id: ID of the subdomain.
+        :param element_ids: List of element IDs to assign to the subdomain.
         """
         if subdomain_id not in self.materials:
             raise ValueError(f"Subdomain {subdomain_id} does not exist.")
@@ -42,211 +105,176 @@ class MaterialParams:
 
 
 class BoundaryConditions:
-    def __init__(self):
-        self.loads = {}  # Key: node ID, Value: tuple (Fx, Fy, Fz, Mx, My, Mz)
-        self.supports = {}  # Key: node ID, Value: tuple (u_x, u_y, u_z, theta_x, theta_y, theta_z)
+    def __init__(self, supports: Dict[int, Tuple[float, float, float, float, float, float]]):
+        """
+        Initialize boundary conditions with a dictionary of supports.
+        
+        :param supports: Dictionary where keys are node IDs and values are tuples of support conditions.
+                        Example: {node_id: (u_x, u_y, u_z, theta_x, theta_y, theta_z)}
+        """
+        self.loads = {}
+        self.supports = supports
+        self._validate_supports()
 
-    def add_load(self, node_id, Fx, Fy, Fz, Mx, My, Mz):
+    def _validate_supports(self):
+        """
+        Validate the supports dictionary.
+        """
+        for node_id, support_conditions in self.supports.items():
+            if not isinstance(node_id, int) or node_id < 0:
+                raise ValueError(f"Node ID {node_id} must be a non-negative integer.")
+            if len(support_conditions) != 6:
+                raise ValueError(f"Support conditions for node {node_id} must be a tuple of length 6.")
+            for condition in support_conditions:
+                if condition is not None and not isinstance(condition, (float, int)):
+                    raise ValueError(f"Support condition {condition} for node {node_id} must be a float, int, or None.")
+
+    def _validate_loads(self):
+        """
+        Validate the loads dictionary.
+        """
+        for node_id, load_values in self.loads.items():
+            if not isinstance(node_id, int) or node_id < 0:
+                raise ValueError(f"Node ID {node_id} must be a non-negative integer.")
+            if len(load_values) != 6:
+                raise ValueError(f"Load values for node {node_id} must be a tuple of length 6.")
+            for value in load_values:
+                if not isinstance(value, (float, int)):
+                    raise ValueError(f"Load value {value} for node {node_id} must be a float or int.")
+
+    def add_load(self, loads: Dict[int, Tuple[float, float, float, float, float, float]]):
         """
         Add a nodal load.
+        
+        :param loads: Dictionary where keys are node IDs and values are tuples of load values.
+                     Example: {node_id: (Fx, Fy, Fz, Mx, My, Mz)}
         """
-        self.loads[node_id] = (Fx, Fy, Fz, Mx, My, Mz)
+        self.loads = loads
+        self._validate_loads()
 
-    def add_support(self, node_id, u_x, u_y, u_z, theta_x, theta_y, theta_z):
+    def add_fixed_support(self, node_id: int):
+        """Add a fixed support at the specified node."""
+        self.supports[node_id] = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        self._validate_supports()
+
+    def add_pinned_support(self, node_id: int):
+        """Add a pinned support at the specified node."""
+        self.supports[node_id] = (0, 0, 0, None, None, None)
+        self._validate_supports()
+
+        
+class Solver:
+    def __init__(self, mesh: Mesh, material_params: MaterialParams, boundary_conditions: BoundaryConditions):
         """
-        Add a boundary condition.
+        Initialize the solver with mesh, material properties, and boundary conditions.
+        
+        :param mesh: Mesh object containing nodes and elements.
+        :param material_params: MaterialParams object containing material properties and subdomains.
+        :param boundary_conditions: BoundaryConditions object containing supports and loads.
         """
-        self.supports[node_id] = (u_x, u_y, u_z, theta_x, theta_y, theta_z)
+        self.mesh = mesh
+        self.material_params = material_params
+        self.boundary_conditions = boundary_conditions
 
-    def add_fixed_support(self,node_id):
-        self.supports[node_id] = (0.0,0.0,0.0,0.0,0.0,0.0)
-    
-    def add_pinned_suport(self,node_id):
-        self.supports[node_id] = (0,0,0,None,None,None)
+    def assemble_global_stiffness_matrix(self) -> np.ndarray:
+        """Assemble the global stiffness matrix."""
+        n_nodes = len(self.mesh.nodes)
+        n_dofs = n_nodes * 6  # 6 DOFs per node
+        K_global = np.zeros((n_dofs, n_dofs))
 
+        for element_id, (node1, node2) in enumerate(self.mesh.elements):
+            subdomain_id = next((k for k, v in self.material_params.subdomains.items() if element_id in v), None)
+            if subdomain_id is None:
+                raise ValueError(f"Element {element_id} is not assigned to any subdomain.")
+            props = self.material_params.materials[subdomain_id]
 
-def assemble_global_stiffness_matrix(mesh, material_params):
-    """
-    Assemble the global stiffness matrix.
-    """
-    n_nodes = len(mesh.nodes)
-    n_dofs = n_nodes * 6  # 6 DOFs per node
-    K_global = np.zeros((n_dofs, n_dofs))
+            L = np.linalg.norm(self.mesh.nodes[node2] - self.mesh.nodes[node1])
+            k_local = mut.local_elastic_stiffness_matrix_3D_beam(props['E'], props['nu'], props['A'], L, props['I_y'], props['I_z'], props['J'])
 
-    for element_id, (node1, node2) in enumerate(mesh.elements):
-        # Get material properties
-        subdomain_id = next((k for k, v in material_params.subdomains.items() if element_id in v), None)
-        if subdomain_id is None:
-            raise ValueError(f"Element {element_id} is not assigned to any subdomain.")
-        props = material_params.materials[subdomain_id]
+            node1_loc = self.mesh.nodes[node1]
+            node2_loc = self.mesh.nodes[node2]
+            gamma = mut.rotation_matrix_3D(node1_loc[0], node1_loc[1], node1_loc[2], node2_loc[0], node2_loc[1], node2_loc[2], props['local_z_axis'])
+            T = mut.transformation_matrix_3D(gamma)
 
-        # Compute local stiffness matrix
-        L = np.linalg.norm(mesh.nodes[node2] - mesh.nodes[node1])
-        k_local = mut.local_elastic_stiffness_matrix_3D_beam(props['E'],props['nu'],props['A'],L,props['I_y'],props['I_z'],props['J'])
+            k_global = T.T @ k_local @ T
 
-        # Compute transformation matrix
-        node1_loc=mesh.nodes[node1]
-        node2_loc=mesh.nodes[node2]
-        gamma = mut.rotation_matrix_3D(node1_loc[0],node1_loc[1],node1_loc[2],node2_loc[0],node2_loc[1],node2_loc[2],props['local_z_axis'])
-        T = mut.transformation_matrix_3D(gamma)
+            dofs = np.array([node1*6, node1*6+1, node1*6+2, node1*6+3, node1*6+4, node1*6+5,
+                             node2*6, node2*6+1, node2*6+2, node2*6+3, node2*6+4, node2*6+5])
+            for i in range(12):
+                for j in range(12):
+                    K_global[dofs[i], dofs[j]] += k_global[i, j]
 
-        # Transform to global coordinates
-        k_global = T.T @ k_local @ T
+        return K_global
 
-        # Assemble into global stiffness matrix
-        dofs = np.array([node1*6, node1*6+1, node1*6+2, node1*6+3, node1*6+4, node1*6+5,
-                         node2*6, node2*6+1, node2*6+2, node2*6+3, node2*6+4, node2*6+5])
-        for i in range(12):
-            for j in range(12):
-                K_global[dofs[i], dofs[j]] += k_global[i, j]
+    def solve_system(self) -> Tuple[np.ndarray, np.ndarray]:
+        """Solve the system for unknown displacements and reaction forces."""
+        K_global = self.assemble_global_stiffness_matrix()
+        n_dofs = K_global.shape[0]
+        displacements = np.zeros(n_dofs)
+        reactions = np.zeros(n_dofs)
 
-    return K_global
+        known_dofs = []
+        unknown_dofs = []
 
+        for node_id, (u_x, u_y, u_z, theta_x, theta_y, theta_z) in self.boundary_conditions.supports.items():
+            dofs = [node_id * 6 + i for i in range(6)]
+            if u_x is not None:
+                known_dofs.append(dofs[0])
+                displacements[dofs[0]] = u_x
+            if u_y is not None:
+                known_dofs.append(dofs[1])
+                displacements[dofs[1]] = u_y
+            if u_z is not None:
+                known_dofs.append(dofs[2])
+                displacements[dofs[2]] = u_z
+            if theta_x is not None:
+                known_dofs.append(dofs[3])
+                displacements[dofs[3]] = theta_x
+            if theta_y is not None:
+                known_dofs.append(dofs[4])
+                displacements[dofs[4]] = theta_y
+            if theta_z is not None:
+                known_dofs.append(dofs[5])
+                displacements[dofs[5]] = theta_z
 
-def solve_system(K_global, boundary_conditions):
-    """
-    Solve the system for unknown displacements and reaction forces.
+        unknown_dofs = [i for i in range(n_dofs) if i not in known_dofs]
 
-    Parameters:
-        K_global (np.ndarray): Global stiffness matrix of shape (n_dofs, n_dofs).
-        boundary_conditions (BoundaryConditions): Object containing boundary conditions and applied loads.
+        K_uu = K_global[np.ix_(unknown_dofs, unknown_dofs)]
+        K_uk = K_global[np.ix_(unknown_dofs, known_dofs)]
+        K_ku = K_global[np.ix_(known_dofs, unknown_dofs)]
+        K_kk = K_global[np.ix_(known_dofs, known_dofs)]
 
-    Returns:
-        displacements (np.ndarray): Array of displacements for all DOFs.
-        reactions (np.ndarray): Array of reaction forces for all DOFs.
-    """
-    n_dofs = K_global.shape[0]  # Total number of DOFs
-    displacements = np.zeros(n_dofs)  # Initialize displacements
-    reactions = np.zeros(n_dofs)  # Initialize reactions
+        F = np.zeros(n_dofs)
+        for node_id, (Fx, Fy, Fz, Mx, My, Mz) in self.boundary_conditions.loads.items():
+            dofs = [node_id * 6 + i for i in range(6)]
+            F[dofs[0]] = Fx
+            F[dofs[1]] = Fy
+            F[dofs[2]] = Fz
+            F[dofs[3]] = Mx
+            F[dofs[4]] = My
+            F[dofs[5]] = Mz
 
-    # Identify known and unknown DOFs
-    known_dofs = []  # DOFs with known displacements (boundary conditions)
-    unknown_dofs = []  # DOFs with unknown displacements
+        F_u = F[unknown_dofs]
+        F_k = F[known_dofs]
 
-    for node_id, (u_x, u_y, u_z, theta_x, theta_y, theta_z) in boundary_conditions.supports.items():
-        # Map node ID to DOFs
-        dofs = [node_id * 6 + i for i in range(6)]  # 6 DOFs per node
-        # Check which DOFs are constrained
-        if u_x is not None:
-            known_dofs.append(dofs[0])
-            displacements[dofs[0]] = u_x
-        if u_y is not None:
-            known_dofs.append(dofs[1])
-            displacements[dofs[1]] = u_y
-        if u_z is not None:
-            known_dofs.append(dofs[2])
-            displacements[dofs[2]] = u_z
-        if theta_x is not None:
-            known_dofs.append(dofs[3])
-            displacements[dofs[3]] = theta_x
-        if theta_y is not None:
-            known_dofs.append(dofs[4])
-            displacements[dofs[4]] = theta_y
-        if theta_z is not None:
-            known_dofs.append(dofs[5])
-            displacements[dofs[5]] = theta_z
+        displacements[unknown_dofs] = np.linalg.solve(K_uu, F_u)
+        reactions[known_dofs] = K_ku @ displacements[unknown_dofs] - F_k
 
-    # Unknown DOFs are all DOFs not in known_dofs
-    unknown_dofs = [i for i in range(n_dofs) if i not in known_dofs]
+        n_nodes = int(n_dofs / 6)
+        displacements = displacements.reshape(n_nodes, 6)
+        reactions = reactions.reshape(n_nodes, 6)
 
-    # Partition the global stiffness matrix
-    # K_uu = K_global[np.ix_(unknown_dofs, unknown_dofs)]  # Stiffness for unknown displacements
-    # K_uk = K_global[np.ix_(unknown_dofs, known_dofs)]  # Coupling stiffness
-    # K_ku = K_global[np.ix_(known_dofs, unknown_dofs)]  # Coupling stiffness (transpose of K_uk)
-    # K_kk = K_global[np.ix_(known_dofs, known_dofs)]  # Stiffness for known displacements
+        return displacements, reactions
 
-    K_uu = K_global[np.ix_(known_dofs, known_dofs)]  # Stiffness for unknown displacements
-    # K_uk = K_global[np.ix_(known_dofs, unknown_dofs)]  # Coupling stiffness
-    K_ku = K_global[np.ix_(unknown_dofs, known_dofs)]  # Coupling stiffness (transpose of K_uk)
-    # K_kk = K_global[np.ix_(unknown_dofs, unknown_dofs)]  # Stiffness for known displacements
+    def generate_mesh_and_solve(self) -> Tuple[np.ndarray, np.ndarray]:
+        """Generate mesh and solve the system."""
+        displacements, reactions = self.solve_system()
 
-    # Assemble the force vector
-    F = np.zeros(n_dofs)
-    for node_id, (Fx, Fy, Fz, Mx, My, Mz) in boundary_conditions.loads.items():
-        dofs = [node_id * 6 + i for i in range(6)]  # 6 DOFs per node
-        F[dofs[0]] = Fx
-        F[dofs[1]] = Fy
-        F[dofs[2]] = Fz
-        F[dofs[3]] = Mx
-        F[dofs[4]] = My
-        F[dofs[5]] = Mz
+        for node_id, (disp, rxn) in enumerate(zip(displacements, reactions)):
+            u, v, w, theta_x, theta_y, theta_z = np.around(disp, decimals=5)
+            Fx, Fy, Fz, Mx, My, Mz = np.around(rxn, decimals=5)
+            print(f'node {node_id} disp: [u:{u}, v:{v}, w:{w}, theta_x:{theta_x}, theta_y:{theta_y}, theta_z:{theta_z}]')
+            print(f'node {node_id} rxn: [Fx:{Fx}, Fy:{Fy}, Fz:{Fz}, Mx:{Mx}, My:{My}, Mz:{Mz}]')
+            print('------------------------------------------------------------------')
 
-    # Partition the force vector
-    F_u = F[unknown_dofs]  # Forces corresponding to unknown displacements
-    F_k = F[known_dofs]  # Forces corresponding to known displacements
-
-    # Solve for unknown displacements
-    displacements[unknown_dofs] = np.linalg.solve(K_uu, F_u) #  - K_uk @ displacements[known_dofs]
-
-    # Compute reaction forces
-    reactions[known_dofs] = K_ku @ displacements[unknown_dofs] - F_k #  + K_kk @ displacements[known_dofs]
-
-    n_nodes = int(n_dofs/6)
-    displacements = displacements.reshape(n_nodes,6)
-    reactions = reactions.reshape(n_nodes,6)
-
-    return displacements, reactions
-
-
-def generate_mesh_and_solve(
-    nodes:np.ndarray,
-    elements:np.ndarray,
-    subdomain_dict:Dict,
-    subdomain_elements:Dict,
-    list_fixed_nodes_id:List,
-    list_pinned_nodes_id:List,
-    load_dict:Dict,
-)->np.ndarray:
-    """
-    Given nodes, element connectivities, material properties, subdomains, boundary conditions, and external forces,
-    generate mesh and solve for the system.
-
-    INPUTS:
-    nodes: a n by 3 array containing the 3D coordinates of the mesh, where n is the number of nodes.
-    elements: a m by 2 array containing the connectivities of the mesh, where m is the number of elements.
-    subdomain_dict: a dictionary containing the properties of the material, where the key stores the ID for the subdomain, and the value a list of properties.
-            e.g., subdomain 1 with list of properties E, nu, A, I_z, I_y, I_p, J, local_z_axis
-                    {1:[E,nu,A,I_z,I_y,I_p,J,local_z_axis]}
-    subdomain_elements: a dictionary containing the elements subdomain assignments.
-            e.g., subdomain 1 has elements 0,1 {1:[0,1]}
-    list_fixed_nodes_id: a list containing the node IDs for fixed nodes.
-            e.g., [0]
-    list_pinned_nodes_id: a list containing the node IDs for pinned nodes.
-    load_dict: a dictionary where the key is the node ID of the load applied, and the value the list representing the load applied.
-            e.g., {node_id:[F_x,F_y,F_z,M_x,M_y,M_z]}
-
-    OUTPUTS:
-    disps: n by 6 array containing the global nodal displacements [u_x,u_y,u_z,theta_x,theta_y,theta_z]
-    rxns: n by 6 array containing the global rxn forces
-    """
-
-    mesh = Mesh(nodes,elements)
-    materials=MaterialParams()
-    for item in subdomain_dict.items():
-        node_id,mat_params=item
-        materials.add_material(
-            subdomain_id=node_id,
-            E=mat_params[0], nu=mat_params[1], A=mat_params[2], I_z=mat_params[3], I_y=mat_params[4], I_p=mat_params[5], J=mat_params[6], local_z_axis=mat_params[7]
-        )
-
-    for item in subdomain_elements.items():
-        sub_id,elements_in_sub = item
-        materials.assign_subdomain(subdomain_id=sub_id,element_ids=elements_in_sub)
-
-    bcs=BoundaryConditions()
-    for fixed_id in list_fixed_nodes_id:
-        bcs.add_fixed_support(fixed_id)
-
-    for pinned_id in list_pinned_nodes_id:
-        bcs.add_fixed_support(pinned_id)
-
-    for item in load_dict.items():
-        node_id,load = item
-        bcs.add_load(node_id, Fx=load[0], Fy=load[1], Fz=load[2], Mx=load[3], My=load[4], Mz=load[5])
-
-    K_global=assemble_global_stiffness_matrix(mesh,materials)
-
-    disps,rxns=solve_system(K_global,bcs)
-
-
-    return disps,rxns
+        return displacements, reactions

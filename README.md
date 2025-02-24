@@ -12,6 +12,7 @@
 * [Direct Stiffness Method](#dsm)
 * [Installation Instructions](#install)
 * [Example - Single line](#sl)
+* [Examples in Class](#inclass)
 * [Template to Run Code](#template)
 
 ## Direct Stiffness Method <a name="dsm"></a>
@@ -76,39 +77,160 @@ We have a single beam with 2 connected nodes, one at $[0,0,0]$, and one at $[1,0
 import numpy as np
 from a2 import direct_stiffness_method as dsm
 
-############### USER INPUTS ################
-
+# Define nodes and elements
 nodes = np.array([[0, 0, 0], [1, 0, 0]])
 elements = np.array([[0, 1]])
+
+# Define subdomains and material properties
 subdomain_dict = {1:[210e9,0.3,0.01,1e-5,1e-5,1e-5,1e-5,[0,0,1]]}
 subdomain_elements = {1:[0]}
-list_fixed_nodes_id = [0]
-list_pinned_nodes_id = []
-load_dict = {1:[0,-1000,0,0,0,0]}
 
-############################################
+# Define supports and loads
+supports = {0: (0, 0, 0, 0, 0, 0)} # Fixed support at node 0
+loads = {1:[0,-1000,0,0,0,0]}  # Load at node 1
 
-disps,rxns = dsm.generate_mesh_and_solve(
-        nodes,elements,subdomain_dict,subdomain_elements,list_fixed_nodes_id,list_pinned_nodes_id,load_dict
-    )
+# Initialize classes
+mesh = dsm.Mesh(nodes, elements)
+materials = dsm.MaterialParams(subdomain_dict)
+for subdomain_id, elements_in_sub in subdomain_elements.items():
+    materials.assign_subdomain(subdomain_id, elements_in_sub)
+
+bcs = dsm.BoundaryConditions(supports)
+bcs.add_load(loads)
+
+# Solve the system
+solver = dsm.Solver(mesh, materials, bcs)
+displacements, reactions = solver.generate_mesh_and_solve()
 ```
+
+    node 0 disp: [u:0.0, v:0.0, w:0.0, theta_x:0.0, theta_y:0.0, theta_z:0.0]
+    node 0 rxn: [Fx:0.0, Fy:1000.0, Fz:0.0, Mx:0.0, My:0.0, Mz:1000.0]
+    ------------------------------------------------------------------
+    node 1 disp: [u:0.0, v:-0.00016, w:0.0, theta_x:0.0, theta_y:0.0, theta_z:-0.00024]
+    node 1 rxn: [Fx:0.0, Fy:0.0, Fz:0.0, Mx:0.0, My:0.0, Mz:0.0]
+    ------------------------------------------------------------------
+
+
+## In class examples <a name="inclass"></a>
+
+### Example 1
 
 
 ```python
-for node_id,(disp,rxn) in enumerate(zip(disps,rxns)):
-    print(f'node {node_id} has displacements {disp} and reaction forces {rxn}')
-    print('------------------------------------------------------------------')
+import numpy as np
+from a2 import direct_stiffness_method as dsm
+
+# Define nodes and elements
+nodes = np.array([[0, 0, 10], [15, 0, 10],[15,0,0]])
+elements = np.array([[0, 1],[1,2]])
+
+# Define subdomains and material properties
+b,h=0.5,1.0
+E=1000
+nu=0.3
+A=b*h
+Iy=h*(b**3)/12
+Iz=b*(h**3)/12
+Ip=b*h/12*(b**2+h**2)
+J=0.02861
+E0_local_z=[0,0,1]
+E1_local_z=[1,0,0]
+subdomain_dict = {1:[E,nu,A,Iz,Iy,Ip,J,E0_local_z],
+                  2:[E,nu,A,Iz,Iy,Ip,J,E1_local_z]}
+subdomain_elements = {1:[0],2:[1]}
+
+# Define supports and loads
+supports = {0: (0, 0, 0, 0, 0, 0), # Fixed support at node 0
+            2: (0, 0, 0, None, None, None)}  # Pinned support at node 0
+loads = {1:[0.1,0.05,-0.07,0.05,-0.1,0.25]}  # Load at node 1
+
+# Initialize classes
+mesh = dsm.Mesh(nodes, elements)
+materials = dsm.MaterialParams(subdomain_dict)
+for subdomain_id, elements_in_sub in subdomain_elements.items():
+    materials.assign_subdomain(subdomain_id, elements_in_sub)
+
+bcs = dsm.BoundaryConditions(supports)
+bcs.add_load(loads)
+
+# Solve the system
+solver = dsm.Solver(mesh, materials, bcs)
+displacements, reactions = solver.generate_mesh_and_solve()
 ```
 
-    node 0 has displacements [0. 0. 0. 0. 0. 0.] and reaction forces [    0.  1000.     0.     0.     0. -1000.]
+    node 0 disp: [u:0.0, v:0.0, w:0.0, theta_x:0.0, theta_y:0.0, theta_z:0.0]
+    node 0 rxn: [Fx:-0.09468, Fy:-0.0342, Fz:0.0047, Mx:0.10799, My:-0.0236, Mz:-0.76302]
     ------------------------------------------------------------------
-    node 1 has displacements [ 0.         -0.00015873  0.          0.          0.          0.0002381 ] and reaction forces [0. 0. 0. 0. 0. 0.]
+    node 1 disp: [u:0.00284, v:1.59843, w:-0.00131, theta_x:-0.1472, theta_y:-0.01673, theta_z:0.18234]
+    node 1 rxn: [Fx:0.0, Fy:0.0, Fz:0.0, Mx:0.0, My:0.0, Mz:0.0]
+    ------------------------------------------------------------------
+    node 2 disp: [u:0.0, v:0.0, w:0.0, theta_x:-0.16616, theta_y:0.00879, theta_z:0.18234]
+    node 2 rxn: [Fx:-0.00532, Fy:-0.0158, Fz:0.0653, Mx:0.0, My:0.0, Mz:0.0]
+    ------------------------------------------------------------------
+
+
+### Example 2
+
+
+```python
+import numpy as np
+from a2 import direct_stiffness_method as dsm
+
+# Define nodes and elements
+nodes = np.array([[0, 0, 0], [-5, 1, 10],[-1,5,13],[-3,7,11],[6,9,5]])
+elements = np.array([[0, 1],[1,2],[2,3],[2,4]])
+
+# Define subdomains and material properties
+r=1
+E=500
+nu=0.3
+A=np.pi*r**2
+Iy=Iz=np.pi*r**4/4
+Ip=J=np.pi*r**4/2
+subdomain_dict = {1:[E,nu,A,Iz,Iy,Ip,J]}
+subdomain_elements = {1:[0,1,2,3]}
+
+# Define supports and loads
+supports = {0: (None, None, 0, None, None, None), # Fixed support at node 0
+            3: (0, 0, 0, 0, 0, 0),
+            4: (0,0,0,None,None,None)}  # Pinned support at node 0
+loads = {1:[0.1,-0.05,-0.075,0,0,0],
+         2:[0,0,0,0.5,-0.1,0.3]}  # Load at node 1
+
+# Initialize classes
+mesh = dsm.Mesh(nodes, elements)
+materials = dsm.MaterialParams(subdomain_dict)
+for subdomain_id, elements_in_sub in subdomain_elements.items():
+    materials.assign_subdomain(subdomain_id, elements_in_sub)
+
+bcs = dsm.BoundaryConditions(supports)
+bcs.add_load(loads)
+
+# Solve the system
+solver = dsm.Solver(mesh, materials, bcs)
+displacements, reactions = solver.generate_mesh_and_solve()
+```
+
+    node 0 disp: [u:0.16297, v:0.06754, w:0.0, theta_x:0.00386, theta_y:-0.00978, theta_z:0.00998]
+    node 0 rxn: [Fx:0.0, Fy:0.0, Fz:0.00667, Mx:0.0, My:0.0, Mz:0.0]
+    ------------------------------------------------------------------
+    node 1 disp: [u:0.05684, v:-0.02127, w:-0.04423, theta_x:0.00396, theta_y:-0.0093, theta_z:0.00998]
+    node 1 rxn: [Fx:0.0, Fy:0.0, Fz:0.0, Mx:0.0, My:0.0, Mz:0.0]
+    ------------------------------------------------------------------
+    node 2 disp: [u:0.00104, v:0.00109, w:0.00035, theta_x:0.00314, theta_y:-0.00401, theta_z:0.00514]
+    node 2 rxn: [Fx:0.0, Fy:0.0, Fz:0.0, Mx:0.0, My:0.0, Mz:0.0]
+    ------------------------------------------------------------------
+    node 3 disp: [u:0.0, v:0.0, w:0.0, theta_x:0.0, theta_y:0.0, theta_z:0.0]
+    node 3 rxn: [Fx:-0.02351, Fy:0.13795, Fz:0.02532, Mx:-0.41161, My:0.29812, Mz:-0.36144]
+    ------------------------------------------------------------------
+    node 4 disp: [u:0.0, v:0.0, w:0.0, theta_x:-0.00455, theta_y:0.00049, theta_z:0.00066]
+    node 4 rxn: [Fx:-0.07649, Fy:-0.08795, Fz:0.043, Mx:0.0, My:0.0, Mz:0.0]
     ------------------------------------------------------------------
 
 
 ## Template to run code - Put your mesh and problem here! <a name="template"></a>
 
-In the ``tutorials`` folder, open ``run_direct_stiffness_method,ipynb``. Here we provide a blank template to run the code. Please provide the inputs as follow:
+In the ``tutorials`` folder, we provide the ``run_direct_stiffness_method.ipynb``. You can use the template below to run the code. Please provide the inputs as follow:
 
 **INPUTS**:
 
@@ -118,50 +240,67 @@ In the ``tutorials`` folder, open ``run_direct_stiffness_method,ipynb``. Here we
 
 - _subdomain_dict_: a dictionary containing the properties of the material, where the key stores the ID for the subdomain, and the value a list of properties.
         e.g., subdomain 1 with list of properties E, nu, A, I_z, I_y, I_p, J, local_z_axis - 
-        ``{1:[E,nu,A,I_z,I_y,I_p,J,local_z_axis]}``
+        ``{1:[E,nu,A,I_z,I_y,I_p,J,local_z_axis]}``. Note: You can input without any local_z_axis, default is None.
 
 - _subdomain_elements_: a dictionary containing the elements subdomain assignments.
-        e.g., subdomain 1 has elements 0,1 - ``{1:[0,1]}``
+        e.g., subdomain 1 has elements 0,1 - ``{1:[0,1]}``.
 
-- _list_fixed_nodes_id_: a list containing the node IDs for fixed nodes.
-        e.g., ``[0]``
-
-- _list_pinned_nodes_id_: a list containing the node IDs for pinned nodes.
+- _supports_: a dictionary where the key is the node ID, and the value the list representing the boundary condition. e.g., ``{node_id:[u_x,u_y,u_x,theta_x,theta_y,theta_z]}``.
 
 - _load_dict_: a dictionary where the key is the node ID of the load applied, and the value the list representing the load applied.
-        e.g., ``{node_id:[F_x,F_y,F_z,M_x,M_y,M_z]}``
+        e.g., ``{node_id:[F_x,F_y,F_z,M_x,M_y,M_z]}``.
 
 **OUTPUTS**:
 
-- _disps_: n by 6 array containing the global nodal displacements ``[u_x,u_y,u_z,theta_x,theta_y,theta_z]``
+- _displacements_: n by 6 array containing the global nodal displacements ``[u_x,u_y,u_z,theta_x,theta_y,theta_z]``.
 
-- _rxns_: n by 6 array containing the global rxn forces ``[F_x,F_y,F_z,M_x,M_y,M_z]``
+- _reactions_: n by 6 array containing the global rxn forces ``[F_x,F_y,F_z,M_x,M_y,M_z]``.
 
 
 ```python
 import numpy as np
 from a2 import direct_stiffness_method as dsm
 
-############### USER INPUTS ################
+# nodes = np.array([[x1,y1,z1],[x2,y2,z2]])
+nodes = np.array([[0, 0, 10], [15, 0, 10],[15,0,0]])
 
-nodes = np.array([[0, 0, 0], [1, 0, 0]])
-elements = np.array([[0, 1]])
-subdomain_dict = {1:[210e9,0.3,0.01,1e-5,1e-5,1e-5,1e-5,[0,0,1]]}
-subdomain_elements = {1:[0]}
-list_fixed_nodes_id = [0]
-list_pinned_nodes_id = []
-load_dict = {1:[0,-1000,0,0,0,0]}
+# elements = np.array([[node1,node2],[node2,node3]])
+elements = np.array([[0, 1],[1,2]])
 
-############################################
+# Define subdomains and material properties
+E=
+nu=
+A=
+Iz=
+Iy=
+Ip=
+J=
+E0_local_z=
+E1_local_z=
+# subdomain_dict = {subdomain_id:[E,nu,A,I_z,I_y,I_p,J,local_z_axis]}
+subdomain_dict = {1:[E,nu,A,Iz,Iy,Ip,J,E0_local_z],
+                  2:[E,nu,A,Iz,Iy,Ip,J,E1_local_z]}
 
-disps,rxns = dsm.generate_mesh_and_solve(
-        nodes,elements,subdomain_dict,subdomain_elements,list_fixed_nodes_id,list_pinned_nodes_id,load_dict
-    )
-```
+# subdomain_elements = {subdomain_id:[node_ids]}
+subdomain_elements = {1:[0],2:[1]}
 
+# supports = {node_id:[u_x,u_y,u_x,theta_x,theta_y,theta_z]}
+supports = {0: (0, 0, 0, 0, 0, 0),
+            2: (0, 0, 0, None, None, None)}
 
-```python
-for node_id,(disp,rxn) in enumerate(zip(disps,rxns)):
-    print(f'node {node_id} has displacements {disp} and reaction forces {rxn}')
-    print('------------------------------------------------------------------')
+# loads = {node_id:[F_x,F_y,F_z,M_x,M_y,M_z]}
+loads = {1:[0.1,0.05,-0.07,0.05,-0.1,0.25]}  # Load at node 1
+
+# Initialize classes
+mesh = dsm.Mesh(nodes, elements)
+materials = dsm.MaterialParams(subdomain_dict)
+for subdomain_id, elements_in_sub in subdomain_elements.items():
+    materials.assign_subdomain(subdomain_id, elements_in_sub)
+
+bcs = dsm.BoundaryConditions(supports)
+bcs.add_load(loads)
+
+# Solve the system
+solver = dsm.Solver(mesh, materials, bcs)
+displacements, reactions = solver.generate_mesh_and_solve()
 ```

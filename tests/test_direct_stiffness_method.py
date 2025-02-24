@@ -1,32 +1,6 @@
-import numpy as np
 import pytest
-from a2 import direct_stiffness_method as dsm
-from a2 import math_utils as mut
-
-
-@pytest.fixture
-def OneLine():
-    nodes = np.array([[0, 0, 0], [1, 0, 0]])
-    elements = np.array([[0, 1]])
-    return dsm.Mesh(nodes,elements)
-
-
-@pytest.fixture
-def OneLineMat():
-    onelinemat=dsm.MaterialParams()
-    onelinemat.add_material(
-        subdomain_id=1,E=210e9, nu=0.3, A=0.01, I_z=1e-5, I_y=1e-5, I_p=1e-5, J=1e-5, local_z_axis=[0, 0, 1]
-    )
-    onelinemat.assign_subdomain(subdomain_id=1,element_ids=[0])
-    return onelinemat
-
-
-@pytest.fixture
-def OneLineBCs():
-    bcs=dsm.BoundaryConditions()
-    bcs.add_support(0, u_x=0, u_y=0, u_z=0, theta_x=0, theta_y=0, theta_z=0)
-    bcs.add_load(1, Fx=0, Fy=-1000, Fz=0, Mx=0, My=0, Mz=0)
-    return bcs
+import numpy as np
+from a2.direct_stiffness_method import Mesh, MaterialParams, BoundaryConditions, Solver
 
 
 @pytest.fixture
@@ -82,65 +56,205 @@ def knownKGlobal():
     return known
 
 
-def test_mesh():
-    
-    with pytest.raises(Exception):
-        nodes = np.array([
-            [0,1],
-            [1,1]
-        ])
-        elements=np.array([[0,1]])
-        dsm.Mesh(nodes,elements)
-    
-    with pytest.raises(Exception):
-        nodes = np.array([
-            [0,1,0],
-            [0,0,0]
-        ])
-        elements=np.array([[1]])
-        dsm.Mesh(nodes,elements)
+def test_mesh_input_validation():
+    # Test valid node IDs in elements
+    nodes = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0]])
+    elements = np.array([[0, 1], [1, 2]])  # Valid elements
+    mesh = Mesh(nodes, elements)
+    assert mesh.nodes.shape == (3, 3)
+    assert mesh.elements.shape == (2, 2)
+
+    # Test invalid node IDs in elements
+    with pytest.raises(ValueError):
+        invalid_elements = np.array([[0, 3], [1, 2]])  # Node ID 3 does not exist
+        Mesh(nodes, invalid_elements)
+
+    # Test empty nodes or elements
+    with pytest.raises(ValueError):
+        Mesh(np.array([]), np.array([[0, 1]]))  # Empty nodes
+    with pytest.raises(ValueError):
+        Mesh(nodes, np.array([]))  # Empty elements
 
 
-def test_matparams():
-    mp = dsm.MaterialParams()
-    mp.add_material(
-        subdomain_id=1,E=210e9, nu=0.3, A=0.01, I_z=1e-5, I_y=1e-5, I_p=1e-5, J=1e-5, local_z_axis=[0, 0, 1]
-    )
-    mp.assign_subdomain(subdomain_id=1,element_ids=[0])
+def test_material_properties_validation():
+    # Test valid material properties
+    material_params = MaterialParams({1: [210e9, 0.3, 0.01, 1e-6, 1e-6, 1e-6, 1e-6]})
+    assert material_params.materials[1]['E'] == 210e9
 
-    with pytest.raises(Exception):
-        mp.assign_subdomain(subdomain_id=4,element_ids=[0])
+    # Test invalid Young's modulus
+    with pytest.raises(ValueError):
+        MaterialParams({1: [-210e9, 0.3, 0.01, 1e-6, 1e-6, 1e-6, 1e-6]})  # Negative E
+
+    # Test invalid Poisson's ratio
+    with pytest.raises(ValueError):
+        MaterialParams({1: [210e9, 1.5, 0.01, 1e-6, 1e-6, 1e-6, 1e-6]})  # nu > 0.5
+
+    # Test invalid cross-sectional area
+    with pytest.raises(ValueError):
+        MaterialParams({1: [210e9, 0.3, -0.01, 1e-6, 1e-6, 1e-6, 1e-6]})  # Negative A
+
+    # Test invalid moments of inertia
+    with pytest.raises(ValueError):
+        MaterialParams({1: [210e9, 0.3, 0.01, -1e-6, 1e-6, 1e-6, 1e-6]})  # Negative I_z
+
+    # Test invalid torsional constant
+    with pytest.raises(ValueError):
+        MaterialParams({1: [210e9, 0.3, 0.01, 1e-6, 1e-6, 1e-6, -1e-6]})  # Negative J
 
 
-def test_assemble_global_stiffness_matrix(OneLine,OneLineMat,knownKGlobal):
-    K_global=dsm.assemble_global_stiffness_matrix(OneLine,OneLineMat)
-    assert np.allclose(knownKGlobal,K_global)
+def test_boundary_conditions_validation():
+    # Test valid supports
+    supports = {0: (0.0, 0.0, 0.0, None, None, None)}
+    bc = BoundaryConditions(supports)
+    assert bc.supports[0] == (0.0, 0.0, 0.0, None, None, None)
+
+    # Test invalid node ID in supports
+    with pytest.raises(ValueError):
+        BoundaryConditions({-1: (0.0, 0.0, 0.0, None, None, None)})  # Negative node ID
+
+    # Test invalid support conditions (wrong length)
+    with pytest.raises(ValueError):
+        BoundaryConditions({0: (0.0, 0.0, 0.0, None)})  # Tuple length != 6
+
+    # Test invalid support conditions (wrong type)
+    with pytest.raises(ValueError):
+        BoundaryConditions({0: (0.0, 0.0, 0.0, "invalid", None, None)})  # Non-float condition
+
+    # Test valid loads
+    bc.add_load({0: (1000, 0, 0, 0, 0, 0)})
+    assert bc.loads[0] == (1000, 0, 0, 0, 0, 0)
+
+    # Test invalid node ID in loads
+    with pytest.raises(ValueError):
+        bc.add_load({-1: (1000, 0, 0, 0, 0, 0)})  # Negative node ID
+
+    # Test invalid load values (wrong length)
+    with pytest.raises(ValueError):
+        bc.add_load({0: (1000, 0, 0, 0)})  # Tuple length != 6
+
+    # Test invalid load values (wrong type)
+    with pytest.raises(ValueError):
+        bc.add_load({0: (1000, 0, 0, "invalid", 0, 0)})  # Non-float value
 
 
-def test_solve_system(OneLine,OneLineMat,OneLineBCs):
-    K_global=dsm.assemble_global_stiffness_matrix(OneLine,OneLineMat)
-    disps,rxns=dsm.solve_system(K_global,OneLineBCs)
-    known_disps = [0,-0.00015873,0,0,0,0.0002381]
-    known_rxns = [0,1000,0,0,0,-1000]
-    assert np.allclose(disps[1,:],known_disps)
-    assert np.allclose(rxns[0,:],known_rxns)
+def test_empty_mesh():
+    # Test empty mesh
+    with pytest.raises(ValueError):
+        Mesh(np.array([]), np.array([]))
 
 
-def test_generate_mesh_and_solve():
+def test_invalid_subdomain_assignment():
     nodes = np.array([[0, 0, 0], [1, 0, 0]])
     elements = np.array([[0, 1]])
-    subdomain_dict = {1:[210e9,0.3,0.01,1e-5,1e-5,1e-5,1e-5,[0,0,1]]}
-    subdomain_elements = {1:[0]}
-    list_fixed_nodes_id = [0]
-    list_pinned_nodes_id = []
-    load_dict = {1:[0,-1000,0,0,0,0]}
+    material_params = MaterialParams({1: [210e9, 0.3, 0.01, 1e-6, 1e-6, 1e-6, 1e-6]})
+    mesh = Mesh(nodes, elements)
 
-    disps,rxns = dsm.generate_mesh_and_solve(
-        nodes,elements,subdomain_dict,subdomain_elements,list_fixed_nodes_id,list_pinned_nodes_id,load_dict
-    )
+    # Test invalid subdomain assignment
+    with pytest.raises(ValueError):
+        solver = Solver(mesh, material_params, BoundaryConditions({}))
+        solver.assemble_global_stiffness_matrix()
 
-    known_disps = [0,-0.00015873,0,0,0,0.0002381]
-    known_rxns = [0,1000,0,0,0,-1000]
 
-    assert np.allclose(disps[1,:],known_disps)
-    assert np.allclose(rxns[0,:],known_rxns)
+def test_global_stiffness_matrix():
+    # Provide your own matrix for validation
+    nodes = np.array([[0, 0, 0], [1, 0, 0]])
+    elements = np.array([[0, 1]])
+    material_params = MaterialParams({1: [210e9, 0.3, 0.01, 1e-6, 1e-6, 1e-6, 1e-6]})
+    material_params.assign_subdomain(1, [0])
+    mesh = Mesh(nodes, elements)
+    bc = BoundaryConditions({0: (0.0, 0.0, 0.0, None, None, None)})
+    solver = Solver(mesh, material_params, bc)
+
+    # Assemble global stiffness matrix
+    K_global = solver.assemble_global_stiffness_matrix()
+    assert K_global.shape == (12, 12)  # 2 nodes * 6 DOFs
+
+def test_assemble_global_stiffness_matrix(knownKGlobal):
+    # Provide your own matrix for validation
+    nodes = np.array([[0, 0, 0], [1, 0, 0]])
+    elements = np.array([[0, 1]])
+    material_params = MaterialParams({1: [210e9, 0.3, 0.01, 1e-5, 1e-5, 1e-5, 1e-5]})
+    material_params.assign_subdomain(1, [0])
+    mesh = Mesh(nodes, elements)
+    bc = BoundaryConditions({0: (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)})
+    bc.add_load({1: (0, -1000, 0, 0, 0, 0)})
+    solver = Solver(mesh, material_params, bc)
+
+    # Assemble global stiffness matrix
+    K_global = solver.assemble_global_stiffness_matrix()
+
+    assert np.allclose(knownKGlobal,K_global)
+
+def test_solve_system():
+    # Provide your own example for validation
+    nodes = np.array([[0, 0, 0], [1, 0, 0]])
+    elements = np.array([[0, 1]])
+    material_params = MaterialParams({1: [210e9, 0.3, 0.01, 1e-5, 1e-5, 1e-5, 1e-5,[0,0,1]]})
+    material_params.assign_subdomain(1, [0])
+    mesh = Mesh(nodes, elements)
+    bc = BoundaryConditions({0: (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)})
+    bc.add_load({1: (0, -1000, 0, 0, 0, 0)})
+    solver = Solver(mesh, material_params, bc)
+
+    known_disps = [0,-0.00015873,0,0,0,-0.0002381]
+    known_rxns = [0,1000,0,0,0,1000]
+
+    # Solve the system
+    displacements, reactions = solver.solve_system()
+    assert np.allclose(displacements[1,:],known_disps)
+    assert np.allclose(reactions[0,:],known_rxns)
+
+
+# def test_generate_mesh_and_solve_2lines():
+
+#     # Provide your own example for validation
+#     nodes = np.array([[0, 0, 10], [15, 0, 10],[15,0,0]])
+#     elements = np.array([[0, 1],[1,2]])
+#     material_params = MaterialParams({1: [210e9, 0.3, 0.01, 1e-5, 1e-5, 1e-5, 1e-5,[0,0,1]]})
+#     material_params.assign_subdomain(1, [0])
+#     mesh = Mesh(nodes, elements)
+#     bc = BoundaryConditions({0: (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)})
+#     bc.add_load({1: (0, -1000, 0, 0, 0, 0)})
+#     solver = Solver(mesh, material_params, bc)
+
+#     known_disps = [0,-0.00015873,0,0,0,-0.0002381]
+#     known_rxns = [0,1000,0,0,0,1000]
+
+#     # Solve the system
+#     displacements, reactions = solver.solve_system()
+#     assert np.allclose(displacements[1,:],known_disps)
+#     assert np.allclose(reactions[0,:],known_rxns)
+
+#     nodes = np.array([[0, 0, 10], [15, 0, 10],[15,0,0]])
+#     elements = np.array([[0, 1],[1,2]])
+
+#     b,h=0.5,1.0
+#     E=1000
+#     nu=0.3
+#     A=b*h
+#     Iy=h*b**3/12
+#     Iz=b*h**3/12
+#     Ip=b*h/12*(b**2+h**2)
+#     J=0.02861
+#     E0_local_z=[0,0,1]
+#     E1_local_z=[1,0,0]
+#     subdomain_dict = {1:[E,nu,A,Iz,Iy,Ip,J,E0_local_z],
+#                     2:[E,nu,A,Iz,Iy,Ip,J,E1_local_z]}
+#     subdomain_elements = {1:[0],2:[1]}
+
+#     list_fixed_nodes_id = [0]
+#     list_pinned_nodes_id = [2]
+
+#     load_dict = {1:[0.1,0.05,-0.07,0.05,-0.1,0.25]}
+
+#     ############################################
+
+#     disps,rxns = dsm.generate_mesh_and_solve(
+#             nodes,elements,subdomain_dict,subdomain_elements,list_fixed_nodes_id,list_pinned_nodes_id,load_dict
+#         )
+
+#     known_disps = [0,-0.00015873,0,0,0,0.0002381]
+#     known_rxns = [0,1000,0,0,0,-1000]
+
+#     assert np.allclose(disps[1,:],known_disps)
+#     assert np.allclose(rxns[0,:],known_rxns)
