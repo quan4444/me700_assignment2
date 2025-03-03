@@ -134,13 +134,13 @@ solver.plot_internal_forces(int_forces)
 
 
     
-![png](run_direct_stiffness_method_files/run_direct_stiffness_method_3_0.png)
+![png](tutorials/run_direct_stiffness_method_files/run_direct_stiffness_method_3_0.png)
     
 
 
 
     
-![png](run_direct_stiffness_method_files/run_direct_stiffness_method_3_1.png)
+![png](tutorials/run_direct_stiffness_method_files/run_direct_stiffness_method_3_1.png)
     
 
 
@@ -151,7 +151,7 @@ solver.plot_deformed_structure(displacements,scale=1.0)
 
 
     
-![png](run_direct_stiffness_method_files/run_direct_stiffness_method_4_0.png)
+![png](tutorials/run_direct_stiffness_method_files/run_direct_stiffness_method_4_0.png)
     
 
 
@@ -222,25 +222,25 @@ solver.plot_internal_forces(int_forces)
 
 
     
-![png](run_direct_stiffness_method_files/run_direct_stiffness_method_7_0.png)
+![png](tutorials/run_direct_stiffness_method_files/run_direct_stiffness_method_7_0.png)
     
 
 
 
     
-![png](run_direct_stiffness_method_files/run_direct_stiffness_method_7_1.png)
+![png](tutorials/run_direct_stiffness_method_files/run_direct_stiffness_method_7_1.png)
     
 
 
 
     
-![png](run_direct_stiffness_method_files/run_direct_stiffness_method_7_2.png)
+![png](tutorials/run_direct_stiffness_method_files/run_direct_stiffness_method_7_2.png)
     
 
 
 
     
-![png](run_direct_stiffness_method_files/run_direct_stiffness_method_7_3.png)
+![png](tutorials/run_direct_stiffness_method_files/run_direct_stiffness_method_7_3.png)
     
 
 
@@ -251,7 +251,7 @@ solver.plot_deformed_structure(displacements,scale=10.0)
 
 
     
-![png](run_direct_stiffness_method_files/run_direct_stiffness_method_8_0.png)
+![png](tutorials/run_direct_stiffness_method_files/run_direct_stiffness_method_8_0.png)
     
 ## Elastic Critical Load Analysis - Example 9.12 from MSA book <a name="critical"></a>
 
