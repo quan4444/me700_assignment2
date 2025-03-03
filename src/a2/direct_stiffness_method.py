@@ -397,7 +397,7 @@ class Solver:
             n1_loc = self.mesh.nodes[node1_ind]
             n2_loc = self.mesh.nodes[node2_ind]
             L = np.linalg.norm(n1_loc-n2_loc)
-            A,Ip = props["A"],props["Ip"]
+            A,Ip = props["A"],props["I_p"]
 
             cur_int_force = self.internal_forces[element_id]
             Fx1,Fy1,Fz1,Mx1,My1,Mz1,Fx2,Fy2,Fz2,Mx2,My2,Mz2 = cur_int_force
@@ -423,9 +423,42 @@ class Solver:
         self.internal_forces = self.compute_local_int_forces_and_moments(self.solved_disp)
         
         K_elastic_global = self.assemble_global_stiffness_matrix()
-        K_geo_global = self.assemble_global_stiffness_matrix()
+        K_geo_global = self.assemble_global_geometric_stiffness_matrix()
 
-        eigvals,eigvecs = sp.linalg.eig(K_elastic_global,K_geo_global)
+        known_dofs = []
+        for node_id, (u_x, u_y, u_z, theta_x, theta_y, theta_z) in self.boundary_conditions.supports.items():
+            dofs = [node_id * 6 + i for i in range(6)]
+            if u_x is not None:
+                known_dofs.append(dofs[0])
+            if u_y is not None:
+                known_dofs.append(dofs[1])
+            if u_z is not None:
+                known_dofs.append(dofs[2])
+            if theta_x is not None:
+                known_dofs.append(dofs[3])
+            if theta_y is not None:
+                known_dofs.append(dofs[4])
+            if theta_z is not None:
+                known_dofs.append(dofs[5])
+        n_dofs = K_elastic_global.shape[0]
+        unknown_dofs = [i for i in range(n_dofs) if i not in known_dofs]
+
+        K_e_ff = K_elastic_global[np.ix_(unknown_dofs, unknown_dofs)]
+        K_g_ff = K_geo_global[np.ix_(unknown_dofs, unknown_dofs)]
+        K_e_kk = K_elastic_global[np.ix_(known_dofs, known_dofs)]
+        K_g_kk = K_geo_global[np.ix_(known_dofs, known_dofs)]
+
+
+        cond_Ke_ff = np.linalg.cond(K_e_ff)
+        cond_Kg_ff = np.linalg.cond(K_g_ff)
+        cond_Ke_kk = np.linalg.cond(K_e_kk)
+        cond_Kg_kk = np.linalg.cond(K_g_kk)
+        print(f'log10 K elastic ff cond = {np.log10(cond_Ke_ff)}')
+        print(f'log10 K geo ff cond = {np.log10(cond_Kg_ff)}')
+        print(f'log10 K elastic kk cond = {np.log10(cond_Ke_kk)}')
+        print(f'log10 K geo kk cond = {np.log10(cond_Kg_kk)}')
+
+        eigvals,eigvecs = sp.linalg.eig(K_e_ff,-K_g_ff)
 
         real_pos_mask = np.isreal(eigvals) & (eigvals > 0)
         filtered_eigvals = np.real(eigvals[real_pos_mask])
@@ -437,3 +470,32 @@ class Solver:
 
         return filtered_eigvals,filtered_eigvecs
 
+    # def plot_buckled_structure(self,eigvec:np.ndarray,scale:float=1.0):
+    #     fig= plt.figure(figsize=(10,10))
+    #     ax = fig.add_subplot(111,projection='3d')
+
+    #     for element_id,(node1_ind,node2_ind) in enumerate(self.mesh.elements):
+    #         n1_loc = self.mesh.nodes[node1_ind]
+    #         n2_loc = self.mesh.nodes[node2_ind]
+    #         x_ref = [n1_loc[0],n2_loc[0]]
+    #         y_ref = [n1_loc[1],n2_loc[1]]
+    #         z_ref = [n1_loc[2],n2_loc[2]]
+
+    #         ax.plot(x_ref,y_ref,z_ref,c='b',label='Reference',linewidth=2)
+
+    #         n1_disp = disp[node1_ind,:]
+    #         n2_disp = disp[node2_ind,:]
+
+    #         x_cur = [x_ref[0]+scale*n1_disp[0], x_ref[1]+scale*n2_disp[0]]
+    #         y_cur = [y_ref[0]+scale*n1_disp[1], y_ref[1]+scale*n2_disp[1]]
+    #         z_cur = [z_ref[0]+scale*n1_disp[2], z_ref[1]+scale*n2_disp[2]]
+            
+    #         ax.plot(x_cur,y_cur,z_cur,c='r',label='Current',linewidth=2)
+
+    #         if element_id==0:
+    #             ax.legend()
+        
+    #     ax.set_title(f'Reference vs Current Configuration w/ scale={scale}',fontsize=20)
+    #     ax.set_xlabel('x')
+    #     ax.set_ylabel('y')
+    #     ax.set_zlabel('z')
