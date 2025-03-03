@@ -205,56 +205,55 @@ def test_solve_system():
     assert np.allclose(reactions[0,:],known_rxns)
 
 
-# def test_generate_mesh_and_solve_2lines():
+def test_compute_local_int_forces_and_moments():
+    # Provide your own example for validation
+    nodes = np.array([[0, 0, 0], [1, 0, 0]])
+    elements = np.array([[0, 1]])
+    material_params = MaterialParams({1: [210e9, 0.3, 0.01, 1e-5, 1e-5, 1e-5, 1e-5,[0,0,1]]})
+    material_params.assign_subdomain(1, [0])
+    mesh = Mesh(nodes, elements)
+    bc = BoundaryConditions({0: (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)})
+    bc.add_load({1: (0, -1000, 0, 0, 0, 0)})
+    solver = Solver(mesh, material_params, bc)
+    displacements, reactions = solver.solve_system()
+    element_int_forces = solver.compute_local_int_forces_and_moments(displacements)
 
-#     # Provide your own example for validation
-#     nodes = np.array([[0, 0, 10], [15, 0, 10],[15,0,0]])
-#     elements = np.array([[0, 1],[1,2]])
-#     material_params = MaterialParams({1: [210e9, 0.3, 0.01, 1e-5, 1e-5, 1e-5, 1e-5,[0,0,1]]})
-#     material_params.assign_subdomain(1, [0])
-#     mesh = Mesh(nodes, elements)
-#     bc = BoundaryConditions({0: (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)})
-#     bc.add_load({1: (0, -1000, 0, 0, 0, 0)})
-#     solver = Solver(mesh, material_params, bc)
+    known_int_forces = {0:np.array([0.0,1000,0.0,0.0,0.0,1000,0.0,-1000,0.0,0.0,0.0,0.0])}
+    
+    assert np.allclose(known_int_forces[0],element_int_forces[0])
 
-#     known_disps = [0,-0.00015873,0,0,0,-0.0002381]
-#     known_rxns = [0,1000,0,0,0,1000]
 
-#     # Solve the system
-#     displacements, reactions = solver.solve_system()
-#     assert np.allclose(displacements[1,:],known_disps)
-#     assert np.allclose(reactions[0,:],known_rxns)
+def test_plot_internal_forces():
+    # Provide your own example for validation
+    nodes = np.array([[0, 0, 0], [1, 0, 0]])
+    elements = np.array([[0, 1]])
+    material_params = MaterialParams({1: [210e9, 0.3, 0.01, 1e-5, 1e-5, 1e-5, 1e-5,[0,0,1]]})
+    material_params.assign_subdomain(1, [0])
+    mesh = Mesh(nodes, elements)
+    bc = BoundaryConditions({0: (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)})
+    bc.add_load({1: (0, -1000, 0, 0, 0, 0)})
+    solver = Solver(mesh, material_params, bc)
+    displacements, reactions = solver.solve_system()
+    element_int_forces = solver.compute_local_int_forces_and_moments(displacements)
+    solver.plot_internal_forces(element_int_forces)
+    
+    assert True
 
-#     nodes = np.array([[0, 0, 10], [15, 0, 10],[15,0,0]])
-#     elements = np.array([[0, 1],[1,2]])
 
-#     b,h=0.5,1.0
-#     E=1000
-#     nu=0.3
-#     A=b*h
-#     Iy=h*b**3/12
-#     Iz=b*h**3/12
-#     Ip=b*h/12*(b**2+h**2)
-#     J=0.02861
-#     E0_local_z=[0,0,1]
-#     E1_local_z=[1,0,0]
-#     subdomain_dict = {1:[E,nu,A,Iz,Iy,Ip,J,E0_local_z],
-#                     2:[E,nu,A,Iz,Iy,Ip,J,E1_local_z]}
-#     subdomain_elements = {1:[0],2:[1]}
+def test_plot_deformed_structure():
+    # Provide your own example for validation
+    nodes = np.array([[0, 0, 0], [1, 0, 0]])
+    elements = np.array([[0, 1]])
+    material_params = MaterialParams({1: [210e9, 0.3, 0.01, 1e-5, 1e-5, 1e-5, 1e-5,[0,0,1]]})
+    material_params.assign_subdomain(1, [0])
+    mesh = Mesh(nodes, elements)
+    bc = BoundaryConditions({0: (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)})
+    bc.add_load({1: (0, -1000, 0, 0, 0, 0)})
+    solver = Solver(mesh, material_params, bc)
+    displacements, reactions = solver.solve_system()
+    solver.plot_deformed_structure(displacements)
+    
+    assert True
 
-#     list_fixed_nodes_id = [0]
-#     list_pinned_nodes_id = [2]
 
-#     load_dict = {1:[0.1,0.05,-0.07,0.05,-0.1,0.25]}
-
-#     ############################################
-
-#     disps,rxns = dsm.generate_mesh_and_solve(
-#             nodes,elements,subdomain_dict,subdomain_elements,list_fixed_nodes_id,list_pinned_nodes_id,load_dict
-#         )
-
-#     known_disps = [0,-0.00015873,0,0,0,0.0002381]
-#     known_rxns = [0,1000,0,0,0,-1000]
-
-#     assert np.allclose(disps[1,:],known_disps)
-#     assert np.allclose(rxns[0,:],known_rxns)
+# def test_solve_system_with_geometric_nonlinearities():

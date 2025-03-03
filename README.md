@@ -11,9 +11,10 @@
 
 * [Direct Stiffness Method](#dsm)
 * [Installation Instructions](#install)
-* [Example - Single line](#sl)
 * [Examples in Class](#inclass)
-* [Template to Run Code](#template)
+* [Elastic Critical Load Analysis](#critical)
+* [Template to Run Code](#template1)
+
 
 ## Direct Stiffness Method <a name="dsm"></a>
 
@@ -66,50 +67,6 @@ To run the notebook in VSCode, simply double click on the ``run_direct_stiffness
 jupyter notebook run_direct_stiffness_method.ipynb
 ```
 _Note: Depending on your IDE, you might be prompted to install some extra dependencies. In VSCode, this should be a simple button click._
-
-
-## Example problem - Single line <a name="sl"></a>
-
-We have a single beam with 2 connected nodes, one at $[0,0,0]$, and one at $[1,0,0]$. The left node is fixed, and the right node experiences an external force $F_y=-1000$. The beam has the following properties $E=210e9$,$\nu=0.3$,$A=0.01$,$I_z=1e-5$,$I_y=1e-5$,$I_p=1e-5$,$J=1.0$, and local z-axis $[0,0,1]$. Solve for the missing displacements and reaction forces at the fixed node.
-
-
-```python
-import numpy as np
-from a2 import direct_stiffness_method as dsm
-
-# Define nodes and elements
-nodes = np.array([[0, 0, 0], [1, 0, 0]])
-elements = np.array([[0, 1]])
-
-# Define subdomains and material properties
-subdomain_dict = {1:[210e9,0.3,0.01,1e-5,1e-5,1e-5,1e-5,[0,0,1]]}
-subdomain_elements = {1:[0]}
-
-# Define supports and loads
-supports = {0: (0, 0, 0, 0, 0, 0)} # Fixed support at node 0
-loads = {1:[0,-1000,0,0,0,0]}  # Load at node 1
-
-# Initialize classes
-mesh = dsm.Mesh(nodes, elements)
-materials = dsm.MaterialParams(subdomain_dict)
-for subdomain_id, elements_in_sub in subdomain_elements.items():
-    materials.assign_subdomain(subdomain_id, elements_in_sub)
-
-bcs = dsm.BoundaryConditions(supports)
-bcs.add_load(loads)
-
-# Solve the system
-solver = dsm.Solver(mesh, materials, bcs)
-displacements, reactions = solver.generate_mesh_and_solve()
-```
-
-    node 0 disp: [u:0.0, v:0.0, w:0.0, theta_x:0.0, theta_y:0.0, theta_z:0.0]
-    node 0 rxn: [Fx:0.0, Fy:1000.0, Fz:0.0, Mx:0.0, My:0.0, Mz:1000.0]
-    ------------------------------------------------------------------
-    node 1 disp: [u:0.0, v:-0.00016, w:0.0, theta_x:0.0, theta_y:0.0, theta_z:-0.00024]
-    node 1 rxn: [Fx:0.0, Fy:0.0, Fz:0.0, Mx:0.0, My:0.0, Mz:0.0]
-    ------------------------------------------------------------------
-
 
 ## In class examples <a name="inclass"></a>
 
@@ -167,6 +124,35 @@ displacements, reactions = solver.generate_mesh_and_solve()
     node 2 disp: [u:0.0, v:0.0, w:0.0, theta_x:-0.16616, theta_y:0.00879, theta_z:0.18234]
     node 2 rxn: [Fx:-0.00532, Fy:-0.0158, Fz:0.0653, Mx:0.0, My:0.0, Mz:0.0]
     ------------------------------------------------------------------
+
+
+
+```python
+int_forces = solver.compute_local_int_forces_and_moments(displacements)
+solver.plot_internal_forces(int_forces)
+```
+
+
+    
+![png](run_direct_stiffness_method_files/run_direct_stiffness_method_3_0.png)
+    
+
+
+
+    
+![png](run_direct_stiffness_method_files/run_direct_stiffness_method_3_1.png)
+    
+
+
+
+```python
+solver.plot_deformed_structure(displacements,scale=1.0)
+```
+
+
+    
+![png](run_direct_stiffness_method_files/run_direct_stiffness_method_4_0.png)
+    
 
 
 ### Example 2
@@ -228,7 +214,95 @@ displacements, reactions = solver.generate_mesh_and_solve()
     ------------------------------------------------------------------
 
 
-## Template to run code - Put your mesh and problem here! <a name="template"></a>
+
+```python
+int_forces = solver.compute_local_int_forces_and_moments(displacements)
+solver.plot_internal_forces(int_forces)
+```
+
+
+    
+![png](run_direct_stiffness_method_files/run_direct_stiffness_method_7_0.png)
+    
+
+
+
+    
+![png](run_direct_stiffness_method_files/run_direct_stiffness_method_7_1.png)
+    
+
+
+
+    
+![png](run_direct_stiffness_method_files/run_direct_stiffness_method_7_2.png)
+    
+
+
+
+    
+![png](run_direct_stiffness_method_files/run_direct_stiffness_method_7_3.png)
+    
+
+
+
+```python
+solver.plot_deformed_structure(displacements,scale=10.0)
+```
+
+
+    
+![png](run_direct_stiffness_method_files/run_direct_stiffness_method_8_0.png)
+    
+## Elastic Critical Load Analysis - Example 9.12 from MSA book <a name="critical"></a>
+
+You can also replace the values here to run the code for critical load analysis.
+
+```python
+import numpy as np
+from a2 import direct_stiffness_method as dsm
+
+# Define nodes and elements
+nodes = np.array([[0, 0, 0], [0, 24, 0]])
+elements = np.array([[0, 1]])
+
+# Define subdomains and material properties
+E=29000
+nu=0.3
+A=22.4
+Iy=82.5
+Iz=2100
+J=2.68
+Ip=J # dummy bc never used | need to double check
+# E0_local_z=
+subdomain_dict = {1:[E,nu,A,Iz,Iy,Ip,J]}
+subdomain_elements = {1:[0]}
+
+# Define supports and loads
+supports = {0: (0, 0, 0, 0, 0, 0), # Fixed support at node 0
+            1: (0, None, 0, None, None, None)}  # Pinned support at node 0
+loads = {1:[0,-1,0,0,0,0]}  # Load at node 1
+
+# Initialize classes
+mesh = dsm.Mesh(nodes, elements)
+materials = dsm.MaterialParams(subdomain_dict)
+for subdomain_id, elements_in_sub in subdomain_elements.items():
+    materials.assign_subdomain(subdomain_id, elements_in_sub)
+
+bcs = dsm.BoundaryConditions(supports)
+bcs.add_load(loads)
+
+# Solve the system
+solver = dsm.Solver(mesh, materials, bcs)
+# displacements, reactions = solver.generate_mesh_and_solve()
+eigvals,eigvecs=solver.solve_critical_buckling_load()
+print(f'Critical load factor = {eigvals[0]}')
+```
+
+    Critical load = 0.9999999999999876
+
+
+
+## Template to run code - Part 1 <a name="template1"></a>
 
 In the ``tutorials`` folder, we provide the ``run_direct_stiffness_method.ipynb``. You can use the template below to run the code. Please provide the inputs as follow:
 
@@ -245,7 +319,7 @@ In the ``tutorials`` folder, we provide the ``run_direct_stiffness_method.ipynb`
 - _subdomain_elements_: a dictionary containing the elements subdomain assignments.
         e.g., subdomain 1 has elements 0,1 - ``{1:[0,1]}``.
 
-- _supports_: a dictionary where the key is the node ID, and the value the list representing the boundary condition. e.g., ``{node_id:[u_x,u_y,u_x,theta_x,theta_y,theta_z]}``.
+- _supports_: a dictionary where the key is the node ID, and the value the list representing the boundary condition. e.g., ``{node_id:[u_x,u_y,u_x,theta_x,theta_y,theta_z]}.
 
 - _load_dict_: a dictionary where the key is the node ID of the load applied, and the value the list representing the load applied.
         e.g., ``{node_id:[F_x,F_y,F_z,M_x,M_y,M_z]}``.
@@ -303,4 +377,20 @@ bcs.add_load(loads)
 # Solve the system
 solver = dsm.Solver(mesh, materials, bcs)
 displacements, reactions = solver.generate_mesh_and_solve()
+```
+
+
+```python
+int_forces = solver.compute_local_int_forces_and_moments(displacements)
+solver.plot_internal_forces(int_forces)
+```
+
+
+```python
+solver.plot_deformed_structure(displacements,scale=1.0)
+```
+
+```python
+eigvals,eigvecs=solver.solve_critical_buckling_load()
+print(f'Critical load factor = {eigvals[0]}')
 ```

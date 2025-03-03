@@ -1,4 +1,6 @@
 import numpy as np
+import matplotlib.pyplot as plt
+import scipy as sp
 from a2 import math_utils as mut
 from typing import List, Dict, Tuple
 
@@ -164,7 +166,11 @@ class BoundaryConditions:
 
         
 class Solver:
-    def __init__(self, mesh: Mesh, material_params: MaterialParams, boundary_conditions: BoundaryConditions):
+    def __init__(
+        self,
+        mesh: Mesh,
+        material_params: MaterialParams,
+        boundary_conditions: BoundaryConditions):
         """
         Initialize the solver with mesh, material properties, and boundary conditions.
         
@@ -278,3 +284,156 @@ class Solver:
             print('------------------------------------------------------------------')
 
         return displacements, reactions
+
+    def compute_local_int_forces_and_moments(self,disp:np.ndarray)->np.ndarray:
+        disp = disp.flatten()
+        element_int_forces = {}
+        for element_id, (node1_ind, node2_ind) in enumerate(self.mesh.elements):
+            node1_loc = self.mesh.nodes[node1_ind]
+            node2_loc = self.mesh.nodes[node2_ind]
+
+            subdomain_id = next((k for k, v in self.material_params.subdomains.items() if element_id in v), None)
+            props = self.material_params.materials[subdomain_id]
+
+            L = np.linalg.norm(node1_loc - node2_loc)
+            k_local = mut.local_elastic_stiffness_matrix_3D_beam(props['E'], props['nu'], props['A'], L, props['I_y'], props['I_z'], props['J'])
+
+            gamma = mut.rotation_matrix_3D(node1_loc[0], node1_loc[1], node1_loc[2], node2_loc[0], node2_loc[1], node2_loc[2], props['local_z_axis'])
+            T = mut.transformation_matrix_3D(gamma)
+
+            dofs = np.array([node1_ind*6, node1_ind*6+1, node1_ind*6+2, node1_ind*6+3, node1_ind*6+4, node1_ind*6+5,
+                             node2_ind*6, node2_ind*6+1, node2_ind*6+2, node2_ind*6+3, node2_ind*6+4, node2_ind*6+5])
+            
+            disp_cur = disp[dofs]
+            disp_local = T@disp_cur
+            int_forces = k_local@disp_local
+
+            element_int_forces[element_id] = int_forces
+
+        return element_int_forces
+    
+    def plot_internal_forces(self,element_int_forces:Dict):
+        for element_id,int_force in element_int_forces.items():
+            node1_ind,node2_ind = self.mesh.elements[element_id]
+            node1_loc = self.mesh.nodes[node1_ind]
+            node2_loc = self.mesh.nodes[node2_ind]
+            local_x = [0,np.linalg.norm(node1_loc - node2_loc)]
+            
+            fig,ax = plt.subplots(nrows=2,ncols=3,figsize=(15,8))
+
+            ax[0,0].plot(local_x,int_force[[0,6]])
+            ax[0,0].set_title('$F_x$')
+            ax[0,0].set_xlabel('Distance between nodes')
+            ax[0,0].set_ylabel('Force')
+
+            ax[0,1].plot(local_x,int_force[[1,7]])
+            ax[0,1].set_title('$F_y$')
+            ax[0,1].set_xlabel('Distance between nodes')
+            ax[0,1].set_ylabel('Force')
+
+            ax[0,2].plot(local_x,int_force[[2,8]])
+            ax[0,2].set_title('$F_z$')
+            ax[0,2].set_xlabel('Distance between nodes')
+            ax[0,2].set_ylabel('Force')
+
+            ax[1,0].plot(local_x,int_force[[3,9]])
+            ax[1,0].set_title('$M_x$')
+            ax[1,0].set_xlabel('Distance between nodes')
+            ax[1,0].set_ylabel('Moment')
+
+            ax[1,1].plot(local_x,int_force[[4,10]])
+            ax[1,1].set_title('$M_y$')
+            ax[1,1].set_xlabel('Distance between nodes')
+            ax[1,1].set_ylabel('Moment')
+
+            ax[1,2].plot(local_x,int_force[[5,11]])
+            ax[1,2].set_title('$M_z$')
+            ax[1,2].set_xlabel('Distance between nodes')
+            ax[1,2].set_ylabel('Moment')
+
+            fig.suptitle(f'Internal forces and moments for element {element_id}',fontsize=20)
+            plt.tight_layout()
+
+    def plot_deformed_structure(self,disp:np.ndarray,scale:float=1.0):
+        fig= plt.figure(figsize=(10,10))
+        ax = fig.add_subplot(111,projection='3d')
+
+        for element_id,(node1_ind,node2_ind) in enumerate(self.mesh.elements):
+            n1_loc = self.mesh.nodes[node1_ind]
+            n2_loc = self.mesh.nodes[node2_ind]
+            x_ref = [n1_loc[0],n2_loc[0]]
+            y_ref = [n1_loc[1],n2_loc[1]]
+            z_ref = [n1_loc[2],n2_loc[2]]
+
+            ax.plot(x_ref,y_ref,z_ref,c='b',label='Reference',linewidth=2)
+
+            n1_disp = disp[node1_ind,:]
+            n2_disp = disp[node2_ind,:]
+
+            x_cur = [x_ref[0]+scale*n1_disp[0], x_ref[1]+scale*n2_disp[0]]
+            y_cur = [y_ref[0]+scale*n1_disp[1], y_ref[1]+scale*n2_disp[1]]
+            z_cur = [z_ref[0]+scale*n1_disp[2], z_ref[1]+scale*n2_disp[2]]
+            
+            ax.plot(x_cur,y_cur,z_cur,c='r',label='Current',linewidth=2)
+
+            if element_id==0:
+                ax.legend()
+        
+        ax.set_title(f'Reference vs Current Configuration w/ scale={scale}',fontsize=20)
+        ax.set_xlabel('x')
+        ax.set_ylabel('y')
+        ax.set_zlabel('z')
+
+    def assemble_global_geometric_stiffness_matrix(self)->np.ndarray:
+
+        n_nodes = len(self.mesh.nodes)
+        n_dofs = n_nodes * 6  # 6 DOFs per node
+        K_geo_global = np.zeros((n_dofs, n_dofs))
+
+        for element_id,(node1_ind,node2_ind) in enumerate(self.mesh.elements):
+            subdomain_id = next((k for k, v in self.material_params.subdomains.items() if element_id in v), None)
+            props = self.material_params.materials[subdomain_id]
+
+            n1_loc = self.mesh.nodes[node1_ind]
+            n2_loc = self.mesh.nodes[node2_ind]
+            L = np.linalg.norm(n1_loc-n2_loc)
+            A,Ip = props["A"],props["Ip"]
+
+            cur_int_force = self.internal_forces[element_id]
+            Fx1,Fy1,Fz1,Mx1,My1,Mz1,Fx2,Fy2,Fz2,Mx2,My2,Mz2 = cur_int_force
+
+            k_geo=mut.local_geometric_stiffness_matrix_3D_beam(L, A, Ip, Fx2, Mx2, My1, Mz1, My2, Mz2)
+
+            gamma = mut.rotation_matrix_3D(n1_loc[0], n1_loc[1], n1_loc[2], n2_loc[0], n2_loc[1], n2_loc[2], props['local_z_axis'])
+            T = mut.transformation_matrix_3D(gamma)
+
+            k_geo_global = T.T @ k_geo @ T
+
+            dofs = np.array([node1_ind*6, node1_ind*6+1, node1_ind*6+2, node1_ind*6+3, node1_ind*6+4, node1_ind*6+5,
+                             node2_ind*6, node2_ind*6+1, node2_ind*6+2, node2_ind*6+3, node2_ind*6+4, node2_ind*6+5])
+
+            for i in range(12):
+                for j in range(12):
+                    K_geo_global[dofs[i], dofs[j]] += k_geo_global[i, j]
+            
+        return K_geo_global
+
+    def solve_critical_buckling_load(self):
+        self.solved_disp,_ = self.solve_system()
+        self.internal_forces = self.compute_local_int_forces_and_moments(self.solved_disp)
+        
+        K_elastic_global = self.assemble_global_stiffness_matrix()
+        K_geo_global = self.assemble_global_stiffness_matrix()
+
+        eigvals,eigvecs = sp.linalg.eig(K_elastic_global,K_geo_global)
+
+        real_pos_mask = np.isreal(eigvals) & (eigvals > 0)
+        filtered_eigvals = np.real(eigvals[real_pos_mask])
+        filtered_eigvecs = eigvecs[:,real_pos_mask]
+
+        sorted_inds = np.argsort(filtered_eigvals)
+        filtered_eigvals = filtered_eigvals[sorted_inds]
+        filtered_eigvecs = filtered_eigvecs[:,sorted_inds]
+
+        return filtered_eigvals,filtered_eigvecs
+
