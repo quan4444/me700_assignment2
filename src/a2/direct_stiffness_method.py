@@ -286,6 +286,12 @@ class Solver:
         return displacements, reactions
 
     def compute_local_int_forces_and_moments(self,disp:np.ndarray)->np.ndarray:
+        """
+        Compute the internal forces and moments for each element based on the given displacements.
+
+        :param disp: NumPy array of shape (n_nodes, 6) representing the displacements and rotations at each node.
+        :return: Dictionary where keys are element IDs and values are NumPy arrays of internal forces and moments.
+        """
         disp = disp.flatten()
         element_int_forces = {}
         for element_id, (node1_ind, node2_ind) in enumerate(self.mesh.elements):
@@ -313,6 +319,11 @@ class Solver:
         return element_int_forces
     
     def plot_internal_forces(self,element_int_forces:Dict):
+        """
+        Plot the internal forces and moments for each element.
+
+        :param element_int_forces: Dictionary where keys are element IDs and values are NumPy arrays of internal forces and moments.
+        """
         for element_id,int_force in element_int_forces.items():
             node1_ind,node2_ind = self.mesh.elements[element_id]
             node1_loc = self.mesh.nodes[node1_ind]
@@ -354,7 +365,14 @@ class Solver:
             fig.suptitle(f'Internal forces and moments for element {element_id}',fontsize=20)
             plt.tight_layout()
 
-    def plot_deformed_structure(self,disp:np.ndarray,scale:float=1.0):
+    def plot_deformed_structure(self,disp:np.ndarray,scale:float=1.0,axis_equal:bool=False):
+        """
+        Plot the deformed structure based on the given displacements.
+
+        :param disp: NumPy array of shape (n_nodes, 6) representing the displacements and rotations at each node.
+        :param scale: Scaling factor for the displacements to make the deformation more visible.
+        :param axis_equal: If True, set the aspect ratio of the plot to be equal.
+        """
         fig= plt.figure(figsize=(10,10))
         ax = fig.add_subplot(111,projection='3d')
 
@@ -365,7 +383,7 @@ class Solver:
             y_ref = [n1_loc[1],n2_loc[1]]
             z_ref = [n1_loc[2],n2_loc[2]]
 
-            ax.plot(x_ref,y_ref,z_ref,c='b',label='Reference',linewidth=2)
+            ax.plot(x_ref,y_ref,z_ref,c='b',linestyle='--',label='Reference',linewidth=2)
 
             n1_disp = disp[node1_ind,:]
             n2_disp = disp[node2_ind,:]
@@ -383,9 +401,16 @@ class Solver:
         ax.set_xlabel('x')
         ax.set_ylabel('y')
         ax.set_zlabel('z')
+        if axis_equal:
+            ax.set_aspect('equal')
+            ax.set_aspect('equal')
 
     def assemble_global_geometric_stiffness_matrix(self)->np.ndarray:
+        """
+        Assemble the global geometric stiffness matrix.
 
+        :return: NumPy array representing the global geometric stiffness matrix.
+        """
         n_nodes = len(self.mesh.nodes)
         n_dofs = n_nodes * 6  # 6 DOFs per node
         K_geo_global = np.zeros((n_dofs, n_dofs))
@@ -415,10 +440,15 @@ class Solver:
             for i in range(12):
                 for j in range(12):
                     K_geo_global[dofs[i], dofs[j]] += k_geo_global[i, j]
-            
+
         return K_geo_global
 
     def solve_critical_buckling_load(self):
+        """
+        Solve for the critical buckling load of the structure.
+
+        :return: Tuple containing the eigenvalues and eigenvectors of the buckling problem.
+        """
         self.solved_disp,_ = self.solve_system()
         self.internal_forces = self.compute_local_int_forces_and_moments(self.solved_disp)
         
@@ -443,20 +473,11 @@ class Solver:
         n_dofs = K_elastic_global.shape[0]
         unknown_dofs = [i for i in range(n_dofs) if i not in known_dofs]
 
-        K_e_ff = K_elastic_global[np.ix_(unknown_dofs, unknown_dofs)]
-        K_g_ff = K_geo_global[np.ix_(unknown_dofs, unknown_dofs)]
-        K_e_kk = K_elastic_global[np.ix_(known_dofs, known_dofs)]
-        K_g_kk = K_geo_global[np.ix_(known_dofs, known_dofs)]
+        K_e_ff = np.identity(n_dofs)
+        K_g_ff = np.identity(n_dofs)
 
-
-        cond_Ke_ff = np.linalg.cond(K_e_ff)
-        cond_Kg_ff = np.linalg.cond(K_g_ff)
-        cond_Ke_kk = np.linalg.cond(K_e_kk)
-        cond_Kg_kk = np.linalg.cond(K_g_kk)
-        print(f'log10 K elastic ff cond = {np.log10(cond_Ke_ff)}')
-        print(f'log10 K geo ff cond = {np.log10(cond_Kg_ff)}')
-        print(f'log10 K elastic kk cond = {np.log10(cond_Ke_kk)}')
-        print(f'log10 K geo kk cond = {np.log10(cond_Kg_kk)}')
+        K_e_ff[np.ix_(unknown_dofs, unknown_dofs)] = K_elastic_global[np.ix_(unknown_dofs, unknown_dofs)]
+        K_g_ff[np.ix_(unknown_dofs, unknown_dofs)] = K_geo_global[np.ix_(unknown_dofs, unknown_dofs)]
 
         eigvals,eigvecs = sp.linalg.eig(K_e_ff,-K_g_ff)
 
@@ -470,32 +491,122 @@ class Solver:
 
         return filtered_eigvals,filtered_eigvecs
 
-    # def plot_buckled_structure(self,eigvec:np.ndarray,scale:float=1.0):
-    #     fig= plt.figure(figsize=(10,10))
-    #     ax = fig.add_subplot(111,projection='3d')
+    # def hermite_shape_func_axial(self,L,t,u1,u2):
+    #     x = t*L
+    #     N1 = 1-x/L
+    #     N2 = x/L
+    #     u = N1*u1 + N2*u2
+    #     return u
 
-    #     for element_id,(node1_ind,node2_ind) in enumerate(self.mesh.elements):
-    #         n1_loc = self.mesh.nodes[node1_ind]
-    #         n2_loc = self.mesh.nodes[node2_ind]
-    #         x_ref = [n1_loc[0],n2_loc[0]]
-    #         y_ref = [n1_loc[1],n2_loc[1]]
-    #         z_ref = [n1_loc[2],n2_loc[2]]
+    def hermite_shape_func_transverse(self,L,t,v1,v2,th_1,th_2):
+        """
+        Compute the transverse displacement using Hermite shape functions.
 
-    #         ax.plot(x_ref,y_ref,z_ref,c='b',label='Reference',linewidth=2)
+        :param L: Length of the element.
+        :param t: Parameter along the length of the element (0 <= t <= 1).
+        :param v1: Transverse displacement at the first node.
+        :param v2: Transverse displacement at the second node.
+        :param th_1: Rotation at the first node.
+        :param th_2: Rotation at the second node.
+        :return: Transverse displacement at the given parameter t.
+        """
+        x = t*L
+        N1 = 1 - 3*(x/L)**2 + 2*(x/L)**3
+        N2 = x* (1-x/L)**2
+        N3 = 3*(x/L)**2 - 2*(x/L)**3
+        N4 = -(x**2/L)*(1-x/L)
+        v = N1*v1 + N2*th_1 + N3*v2 + N4*th_2
+        return v
 
-    #         n1_disp = disp[node1_ind,:]
-    #         n2_disp = disp[node2_ind,:]
+    def plot_buckled_structure(self,eigvec:np.ndarray,scale:float=1.0,int_pts:int=20,axis_equal:bool=False):
+        """
+        Plot the buckled structure based on the given eigenvector.
 
-    #         x_cur = [x_ref[0]+scale*n1_disp[0], x_ref[1]+scale*n2_disp[0]]
-    #         y_cur = [y_ref[0]+scale*n1_disp[1], y_ref[1]+scale*n2_disp[1]]
-    #         z_cur = [z_ref[0]+scale*n1_disp[2], z_ref[1]+scale*n2_disp[2]]
-            
-    #         ax.plot(x_cur,y_cur,z_cur,c='r',label='Current',linewidth=2)
-
-    #         if element_id==0:
-    #             ax.legend()
+        :param eigvec: NumPy array representing the eigenvector of the buckling problem.
+        :param scale: Scaling factor for the displacements to make the buckling more visible.
+        :param int_pts: Number of integration points along each element for plotting.
+        :param axis_equal: If True, set the aspect ratio of the plot to be equal.
+        """
+        eigvec_rearranged = eigvec.reshape(self.mesh.nodes.shape[0],6)
         
-    #     ax.set_title(f'Reference vs Current Configuration w/ scale={scale}',fontsize=20)
-    #     ax.set_xlabel('x')
-    #     ax.set_ylabel('y')
-    #     ax.set_zlabel('z')
+        fig= plt.figure(figsize=(10,10))
+        ax = fig.add_subplot(111,projection='3d')
+
+        for element_id,(node1_ind,node2_ind) in enumerate(self.mesh.elements):
+
+            n1_loc = self.mesh.nodes[node1_ind]
+            n2_loc = self.mesh.nodes[node2_ind]
+            L = np.linalg.norm(n1_loc-n2_loc)
+            x_ref = [n1_loc[0],n2_loc[0]]
+            y_ref = [n1_loc[1],n2_loc[1]]
+            z_ref = [n1_loc[2],n2_loc[2]]
+
+            subdomain_id = next((k for k, v in self.material_params.subdomains.items() if element_id in v), None)
+            props = self.material_params.materials[subdomain_id]
+            gamma = mut.rotation_matrix_3D(n1_loc[0], n1_loc[1], n1_loc[2], n2_loc[0], n2_loc[1], n2_loc[2], props['local_z_axis'])
+
+            t_int = np.linspace(0,1,int_pts)
+            hermite_u = []
+            hermite_v = []
+            hermite_w = []
+            for cur_t in t_int:
+                u1,v1,w1,thx1,thy1,thz1=eigvec_rearranged[node1_ind]
+                u2,v2,w2,thx2,thy2,thz2=eigvec_rearranged[node2_ind]
+
+                u1,v1,w1 = gamma@np.array([u1,v1,w1])
+                u2,v2,w2 = gamma@np.array([u2,v2,w2])
+                # thx1,thy1,thz1 = gamma@np.array([thx1,thy1,thz1])
+                # thx2,thy2,thz2 = gamma@np.array([thx2,thy2,thz2])
+
+                # u_ = self.hermite_shape_func_axial(L,cur_t,u1,u2)
+                u_ = self.hermite_shape_func_transverse(L,cur_t,u1,u2,thz1,thz2)
+                v_ = self.hermite_shape_func_transverse(L,cur_t,v1,v2,thx1,thx2)
+                w_ = self.hermite_shape_func_transverse(L,cur_t,w1,w2,thy1,thy2)
+                hermite_u.append(u_)
+                hermite_v.append(v_)
+                hermite_w.append(w_)
+
+            hermite_u = np.array(hermite_u)
+            hermite_v = np.array(hermite_v)
+            hermite_w = np.array(hermite_w)
+
+            
+            # T = mut.transformation_matrix_3D(gamma)
+
+            # global_disps_all = []
+            # for ind in range(int_pts):
+            #     cur_u = hermite_u[ind]
+            #     cur_v = hermite_v[ind]
+            #     cur_w = hermite_w[ind]
+                
+            #     local_disp = np.array([cur_u,cur_v,cur_w])
+            #     global_disp = gamma.T@local_disp
+            #     global_disps_all.append(global_disp)
+            # global_disps_all = np.array(global_disps_all)
+
+            local_disps_all = np.concatenate((hermite_u.reshape(-1,1),hermite_v.reshape(-1,1),hermite_w.reshape(-1,1)),axis=1)
+            global_disps_all = gamma.T@local_disps_all.T
+            # print(f'global_disps_all={global_disps_all}')
+
+
+            x_buckled = np.linspace(n1_loc[0],n2_loc[0],int_pts)
+            y_buckled = np.linspace(n1_loc[1],n2_loc[1],int_pts)
+            z_buckled = np.linspace(n1_loc[2],n2_loc[2],int_pts)
+
+            x_buckled += scale*global_disps_all[0,:]
+            y_buckled += scale*global_disps_all[1,:]
+            z_buckled += scale*global_disps_all[2,:]
+
+            ax.plot(x_ref,y_ref,z_ref,c='b',linestyle='--',label='Reference',linewidth=2)
+
+            ax.plot(x_buckled,y_buckled,z_buckled,c='r',label='Buckled',linewidth=2)
+
+            if element_id==0:
+                ax.legend()
+        
+        ax.set_title(f'Reference vs Buckled Configuration w/ scale={scale}',fontsize=20)
+        ax.set_xlabel('x')
+        ax.set_ylabel('y')
+        ax.set_zlabel('z')
+        if axis_equal:
+            ax.set_aspect('equal')

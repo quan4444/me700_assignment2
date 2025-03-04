@@ -256,4 +256,130 @@ def test_plot_deformed_structure():
     assert True
 
 
-# def test_solve_system_with_geometric_nonlinearities():
+def test_assemble_global_geometric_stiffness_matrix():
+    # Define nodes and elements
+    nodes = np.array([[0, 0, 0], [30, 40, 0]])
+    elements = np.array([[0, 1]])
+
+    # Define subdomains and material properties
+    E=1000
+    nu=0.3
+    r=1
+    A=np.pi*r**2
+    Iy=np.pi*r**4/4
+    Iz=np.pi*r**4/4
+    Ip=np.pi*r**4/2
+    J=np.pi*r**4/2
+    subdomain_dict = {1:[E,nu,A,Iz,Iy,Ip,J]}
+    subdomain_elements = {1:[0]}
+
+    # Define supports and loads
+    supports = {0: (0, 0, 0, 0, 0, 0)}
+    loads = {1:[-3/5,-4/5,0,0,0,0]}  # Load at node 1
+
+    # Initialize classes
+    mesh = Mesh(nodes, elements)
+    materials = MaterialParams(subdomain_dict)
+    for subdomain_id, elements_in_sub in subdomain_elements.items():
+        materials.assign_subdomain(subdomain_id, elements_in_sub)
+
+    bcs = BoundaryConditions(supports)
+    bcs.add_load(loads)
+
+    # Solve the system
+    solver = Solver(mesh, materials, bcs)
+    solver.solve_critical_buckling_load()
+    K_g = solver.assemble_global_geometric_stiffness_matrix()
+
+    assert K_g.shape == (12, 12)  # Check shape
+    assert np.allclose(K_g, K_g.T)
+
+
+def test_solve_critical_buckling_load():
+    # Define nodes and elements
+    nodes = np.array([[0, 0, 0], [30, 40, 0]])
+    elements = np.array([[0, 1]])
+
+    # Define subdomains and material properties
+    E=1000
+    nu=0.3
+    r=1
+    A=np.pi*r**2
+    Iy=np.pi*r**4/4
+    Iz=np.pi*r**4/4
+    Ip=np.pi*r**4/2
+    J=np.pi*r**4/2
+    subdomain_dict = {1:[E,nu,A,Iz,Iy,Ip,J]}
+    subdomain_elements = {1:[0]}
+
+    # Define supports and loads
+    supports = {0: (0, 0, 0, 0, 0, 0)}
+    loads = {1:[-3/5,-4/5,0,0,0,0]}  # Load at node 1
+
+    # Initialize classes
+    mesh = Mesh(nodes, elements)
+    materials = MaterialParams(subdomain_dict)
+    for subdomain_id, elements_in_sub in subdomain_elements.items():
+        materials.assign_subdomain(subdomain_id, elements_in_sub)
+
+    bcs = BoundaryConditions(supports)
+    bcs.add_load(loads)
+
+    # Solve the system
+    solver = Solver(mesh, materials, bcs)
+    eigval,eigvec=solver.solve_critical_buckling_load()
+    found = eigval[0]
+    known = 0.7809879011060754
+
+    assert np.isclose(known, found)
+
+
+
+def test_hermite_shape_func_transverse():
+    solver = Solver(None, None, None)  # We don't need mesh, material_params, or boundary_conditions for this test
+    L=1
+    t=0.5
+    # Test case 4: Beam with displacement and rotation at both nodes
+    v1, v2 = 1.0, 2.0  # Displacement at both nodes
+    th_1, th_2 = 1.0, -1.0  # Rotation at both nodes
+    known = 1.75  # Expected transverse displacement at t=0.5
+    found = solver.hermite_shape_func_transverse(L, t, v1, v2, th_1, th_2)
+    assert np.isclose(found, known)
+
+
+def test_plot_buckled_structure():
+    # Define nodes and elements
+    nodes = np.array([[0, 0, 0], [30, 40, 0]])
+    elements = np.array([[0, 1]])
+
+    # Define subdomains and material properties
+    E=1000
+    nu=0.3
+    r=1
+    A=np.pi*r**2
+    Iy=np.pi*r**4/4
+    Iz=np.pi*r**4/4
+    Ip=np.pi*r**4/2
+    J=np.pi*r**4/2
+    subdomain_dict = {1:[E,nu,A,Iz,Iy,Ip,J]}
+    subdomain_elements = {1:[0]}
+
+    # Define supports and loads
+    supports = {0: (0, 0, 0, 0, 0, 0)}
+    loads = {1:[-3/5,-4/5,0,0,0,0]}  # Load at node 1
+
+    # Initialize classes
+    mesh = Mesh(nodes, elements)
+    materials = MaterialParams(subdomain_dict)
+    for subdomain_id, elements_in_sub in subdomain_elements.items():
+        materials.assign_subdomain(subdomain_id, elements_in_sub)
+
+    bcs = BoundaryConditions(supports)
+    bcs.add_load(loads)
+
+    # Solve the system
+    solver = Solver(mesh, materials, bcs)
+    _,eigvecs=solver.solve_critical_buckling_load()
+    solver.plot_buckled_structure(eigvecs[:,0])
+
+    assert True
