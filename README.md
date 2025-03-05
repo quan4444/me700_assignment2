@@ -322,7 +322,7 @@ local_z_axis=[0,0,1]
 subdomain_dict = {1:[E,nu,A,Iz,Iy,I_rho,J,local_z_axis],
                   2:[E,nu,A,Iz,Iy,I_rho,J,None]}
 
-# subdomain_elements = {subdomain_id:[node_ids]}
+# subdomain_elements = {subdomain_id:[element_ids]}
 subdomain_elements = {1:[0,1,2,3,4,5,6,7]}
 
 # supports = {node_id:[u_x,u_y,u_x,theta_x,theta_y,theta_z]}
